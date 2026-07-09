@@ -1,161 +1,108 @@
 ---
-name: ai-marketing-brain
-category: ops
+name: google-veo-marketing-videos
+category: marketing
 tags:
-  - ai
+  - ai-video
+  - video-generation
   - marketing
-  - video
-  - orchestration
-  - daily
-description: A daily, autonomous brain coordinating seven AI agents to plan, produce, format, publish, and analyze daily marketing videos for YouTube and Instagram. It discovers agents via Agent Cards (A2A) and coordinates communication via a hybrid message bus and REST, maintaining a centralized plan and plan history on a local machine. All agents publish their agent cards; no centralized secret store is required.
+  - automation
+  - veo
+description: Generate 15-second marketing videos by calling Google VEo API using a provided prompt
 metadata:
   forge:
     requires:
       bins:
-        - bash
         - curl
         - jq
+        - gcloud
     env:
-      # Credentials for A2A agent coordination provided via environment variables
       required:
-        - MARKETING_AGENT_URL      # URL for the Market Research Agent
-        - MARKETING_AGENT_TOKEN    # Token for Marketing Agent
-        - SCRIPT_GENERATOR_AGENT_URL # URL for the Script Generator Agent
-        - SCRIPT_GENERATOR_AGENT_TOKEN # Token for Script Generator Agent
-        - CONTENT_GENERATOR_AGENT_URL # URL for the Content Generator Agent
-        - CONTENT_GENERATOR_AGENT_TOKEN # Token for Content Generator Agent
-      one_of: []
-      optional:
-        - BRAINS_LOG_LEVEL
+        - VEO_API_KEY
     egress_domains:
-      - agent-registry.local
-      - agent-registry.example.com
-      - youtube.googleapis.com
-      - graph.instagram.com
-      - graph.facebook.com
-      - www.googleapis.com
+      - veo.googleapis.com
+      - googleapis.com
+      - storage.googleapis.com
     denied_tools:
       - http_request
-    timeout_hint: 3600
+    timeout_hint: 10800
 ---
+# Google VEo Marketing Video Generator
 
-AI Marketing Brain
-A centralized, autonomous orchestrator coordinating seven AI agents to plan, produce, format, publish, and analyze daily marketing videos for YouTube and Instagram. It discovers agents via Agent Cards (A2A) and coordinates communication via a hybrid message bus and REST, maintaining a centralized plan and plan history on a local machine. All agents publish their agent cards; no centralized secret store is required.
+This skill creates 15-second marketing videos by invoking the Google VEo API using a prompt provided by another agent. It relies on a VEo API key supplied at runtime via the VEO_API_KEY environment variable and uses curl (with optional gcloud support) to perform the API calls. The output is a video asset delivered via a URL, along with a job/status payload for tracking and auditing. Content is restricted to strictly informational, non-political, non-adult, and non-abrasive material.
 
-Tool: brain_orchestrator
-Coordinate, plan, and execute the end-to-end daily marketing workflow by discovering agents via their agent cards, delegating tasks, and aggregating results. Communicate with agents via a message bus and REST endpoints, enforce the defined workflow, and handle retries and alerts on failure.
+## Tool: google_veo_video
 
-Input:
+Generate a 15-second (configurable) marketing video from an external prompt using Google VEo API.
+
+**Input:**
 
 | Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| prompt | string | Yes | The creative prompt or brief provided by the other agent to generate the video |
+| duration_seconds | integer | No | Video length in seconds (default: 15). Must be 15 per policy unless overridden by the prompt; recommended to fix at 15. |
+| language | string | No | Language/callback locale for narration and captions (e.g., "en-US"). Default if omitted. |
+| voice_profile | string | No | VEo voice profile or ID to use for narration (e.g., "default", "female_en_US"). |
+| platform | string | No | Intended distribution platform (e.g., "YouTube", "Instagram", "TikTok"). |
+| aspect_ratio | string | No | Output aspect ratio: "16:9", "9:16", or "1:1" (default: "16:9"). |
+| brand_assets | object | No | Brand assets to embed: { "logo_url": "...", "palette": ["#RRGGBB", "..."] } |
+| output_format | string | No | Video format for delivery (default: "mp4"). |
+| notes | string | No | Additional notes or constraints for video generation (e.g., "avoid violent imagery"). |
 
-|----------------|--------|----------|-----------------------------------------------------------------------------------------------|
+**Output:**
 
-| target_date | string | No | The publish date for the video in YYYY-MM-DD format (default: today). |
-
-| platforms | string | No | Comma-separated list of platforms to publish to (e.g., "youtube,instagram"). Default includes both. |
-
-| topic | string | No | High-level marketing topic for the video (e.g., "Product Launch", "Onboarding"). |
-
-| style | string | No | Creative/style hint (e.g., "brand-safe", "educational", "short-form"). |
-
-| plan_id | string | No | Identifier for this orchestration run (for traceability). |
-
-Output:
-
-JSON object describing the run, including plan steps, agent statuses, results, and audit trail. Example structure:
-
+```json
 {
-  "execution_id": "exec-2026-07-07-0001",
-  "start_time": "2026-07-07T09:00:00Z",
-  "target_date": "2026-07-07",
-  "platforms": ["youtube", "instagram"],
-  "topic": "Product Launch: Platform Alpha",
-  "style": "brand-safe",
-  "plan_id": "plan-2026-07-07-0001",
-  "status": "in_progress",
-  "agents": [
-    {"name": "market_researcher", "status": "completed", "notes": "Topics identified: features, benefits, pain points"},
-    {"name": "script_generator", "status": "in_progress"},
-    {"name": "content_generator", "status": "pending"},
-    {"name": "consistency_gate", "status": "pending"},
-    {"name": "platform_formatter", "status": "pending"},
-    {"name": "publisher", "status": "pending"},
-    {"name": "analytics_info_scalper", "status": "pending"}
-  ],
-  "plan": [
-    {"step": "discover_agents", "status": "completed", "details": {"discovered": ["market_researcher","script_generator","content_generator","consistency_gate","platform_formatter","publisher","analytics_info_scalper"]}},
-    {"step": "planning", "status": "completed", "details": {"central_plan": "..."}}
-    ,
-    {"step": "delegate_tasks", "status": "in_progress", "details": {"assignments": {
-      "script_generator": {"depends_on": ["market_researcher"]},
-      "content_generator": {"depends_on": ["script_generator"]},
-      "consistency_gate": {"depends_on": ["content_generator"]},
-      "platform_formatter": {"depends_on": ["consistency_gate"]},
-      "publisher": {"depends_on": ["platform_formatter"]},
-      "analytics_info_scalper": {"depends_on": ["publisher"]}
-    }}}
-  ],
-  "media_asset": {
-    "video_id": null,
-    "video_urls": {},
-    "publish_status": "pending"
-  },
-  "evidence": {
-    "events": [],
-    "communications": [],
-    "state_transitions": []
-  },
-  "plan_history": [
-    // persisted per-run history entries
-  ],
-  "logs": [
-    // platform-native logs of all steps
-  ],
-  "next_commands": [
-    "Wait for agents to complete their tasks; publish if all pass."
-  ]
+  "video_url": "https://storage.googleapis.com/your-bucket/path/to/video.mp4",
+  "job_id": "veo-job-abcdef123",
+  "status": "queued" | "in_progress" | "completed" | "failed",
+  "duration_seconds": 15,
+  "platform": "YouTube",
+  "aspect_ratio": "16:9",
+  "language": "en-US",
+  "voice_profile": "default",
+  "errors": null
 }
-Examples:
+```
+
+**Notes on API key handling**
+
+- The VEo API key must be provided at runtime via the environment variable VEO_API_KEY.
+- The key must not be embedded in the SKILL.md or tool inputs and must not be logged.
+- The curl call should include the key in the Authorization header (or as required by VEo docs), e.g. Authorization: Bearer $VEO_API_KEY.
+
+**Examples:**
 
 | User Request | Tool Input |
-
 |---|---|
+| "Create a 15-second YouTube promo for our new running shoes in English with a blue color palette." | {"prompt":"Create a 15-second YouTube promo for our new running shoes focusing on speed and comfort.","duration_seconds":15,"platform":"YouTube","aspect_ratio":"16:9","language":"en-US","voice_profile":"default","brand_assets":{"logo_url":"https://example.com/logo.png","palette":["#1D4ED8","#93C5FD"]}} |
+| "Produce a 15-second Instagram teaser in English about eco-friendly bags." | {"prompt":"15-second Instagram teaser highlighting eco-friendly bags.","duration_seconds":15,"platform":"Instagram","aspect_ratio":"9:16","language":"en-US","brand_assets":{"logo_url":"https://example.com/logo.png","palette":["#34D399","#065F46"]}} |
+| "15s TikTok ad for a coffee brand, Spanish language." | {"prompt":"15-second TikTok ad for a premium coffee brand with a bold, energetic vibe.","duration_seconds":15,"platform":"TikTok","aspect_ratio":"9:16","language":"es-ES","voice_profile":"default_es","brand_assets":{"logo_url":"https://example.com/logo.png","palette":["#6B3E90","#FFD166"]}} |
+| "Explain the new data privacy policy in a 15-second video" | {"prompt":"A concise, factual 15-second explainer about our new data privacy policy.","duration_seconds":15,"platform":"YouTube","aspect_ratio":"16:9","language":"en-US"} |
+| "15-second informational video about a product update for enterprise customers" | {"prompt":"15-second informational video about the latest product update aimed at enterprise customers.","duration_seconds":15,"platform":"YouTube","aspect_ratio":"16:9","language":"en-US"} |
+| "15-second teaser for a mobile app launch, showing brand colors" | {"prompt":"15-second teaser for a mobile app launch highlighting brand colors and logo fade-in.","duration_seconds":15,"platform":"Instagram","aspect_ratio":"9:16","language":"en-US","brand_assets":{"logo_url":"https://example.com/logo.png","palette":["#0EA5E9","#1D4ED8"]}} |
 
-| "Create today's daily marketing video for YouTube and Instagram about Platform Alpha." | {"target_date":"2026-07-07","platforms":"youtube,instagram","topic":"Platform Alpha launch","style":"brand-safe"} |
+**Detection heuristics** — Use this tool when the user mentions:
+- phrases like “create a video,” “promo video,” “video ad,” “marketing video”
+- references to 15 seconds, short-form videos, or platform-specific formats (YouTube, Instagram, TikTok, Shorts, Reels)
+- requests to generate AI-driven marketing or promotional content from a prompt
 
-| "Prepare a daily onboarding video for new users on YouTube only." | {"target_date":"2026-07-07","platforms":"youtube","topic":"Onboarding for Platform Alpha","style":"educational"} |
+## Safety Constraints
 
-| "Publish yesterday's video to both channels if ready." | {"target_date":"2026-07-06","platforms":"youtube,instagram"} |
+- No political content, no adult content, no abrasive or hate-based messaging
+- Read-only for any existing data; this tool mutates by creating new video assets via VEo (mutating operation)
+- Do not access or log sensitive credentials; do not expose the VEo API key in outputs
+- Egress is restricted to the domains declared in the frontmatter:
+  - veo.googleapis.com
+  - googleapis.com
+  - storage.googleapis.com
+- Denied tools: http_request (avoid ad-hoc HTTP via non-curled methods)
+- Do not use any domain outside the allowed egress list
+- Do not generate content that could violate platform guidelines (e.g., misleading claims)
 
-| "Produce a short teaser for social channels about the latest platform feature." | {"target_date":"2026-07-07","platforms":"youtube,instagram","topic":"New feature teaser","style":"short-form"} |
+## Important Notes
 
-| "Create a daily marketing video for Platform Alpha focusing on pricing update." | {"target_date":"2026-07-07","platforms":"youtube,instagram","topic":"Pricing update","style":"informative"} |
-
-| "Generate a full daily video script and content plan for onboarding." | {"target_date":"2026-07-07","platforms":"youtube,instagram","topic":"Onboarding overview","style":"educational"} |
-
-Detection heuristics — use this tool when the user mentions:
-
-daily marketing workflows, content pipelines, or multi-agent orchestration
-publishing on YouTube or Instagram
-phrases like “plan end-to-end,” “delegate tasks,” “dynamic discovery,” “message bus,” or “centralized plan”
-requests for autonomous operation, retries on failure, and alert/pause on persistent failure
-requirements for daily cadence, persistence, and plan history
-Safety Constraints
-READ/WRITE: Mutating operations are allowed (create and publish media), but only within the defined workflow and platforms.
-ROLE/Scope: Do not alter the predefined workflow topology (agent set, data flows, or orchestration graph). The brain may re-plan per run but must not rewire the overall graph or agent roster.
-Data handling: No secret store usage; credentials and agent reachability are derived from Agent Cards published by each A2A agent and, if needed, per-agent tokens exposed in those cards. Do not print secrets in logs or outputs.
-Egress: All external communications must go through permitted domains (as listed in the frontmatter). No connections to unlisted domains.
-Tools: Denied tools include web_search and http_request; use the mandated binaries (curl, jq, etc.) and the provided REST endpoints for agent communication.
-Autonomy limits: The brain retries on failure; if all retries fail, it must raise an alert and pause the workflow until human intervention confirms the issue.
-Logging: All activity must be logged to the platform’s own logs; avoid exposing raw secrets or internal state externally.
-Compliance: Only politically correct and morally aligned domains/topics may be chosen by the brain; content must comply with platform policies and advertising regulations.
-Workflow immutability: Do not alter the core workflow topology or agent roster; re-planning per run is allowed, but the overall graph remains fixed.
-Important Notes
-Dynamic discovery: Agents publish their agent cards (A2A) at known endpoints; the brain reads these cards at runtime to assemble the active roster and their capabilities. No central secret store is required.
-Secret management: Since there is no secret store, credentials are obtained via Agent Cards or per-agent environment configuration if provided by the A2A agents. Secrets must never be logged.
-Plan history: Each daily run is recorded in a persistent plan_history store for auditing and continuous improvement.
-Inter-agent messaging: A hybrid approach combines a message bus for asynchronous signal exchange and REST calls for direct requests to agents. The brain ensures proper sequencing and dependency management (task graph with centralized planning).
-Daily cadence: The orchestrator is designed to run once per day; if the daily run fails to complete, retries occur automatically until success, after which the workflow resumes the normal cadence.
-Localization and safety: All content generation adheres to platform safety guidelines, and all outputs are constrained to the allowed domains and formats.
-Extensibility: The design supports adding or swapping agents without changing the core brain logic, via dynamic A2A agent cards and adapter-based communication.
+- API key handling: The VEo API key must be supplied via the VEO_API_KEY environment variable. Do not log or echo the key.
+- The script uses curl to call VEo endpoints and jq to parse/structure responses. It relies on gcloud only as a supporting binary; no direct OAuth token harvesting is required when using the API key approach.
+- The 15-second requirement is enforced by default. If a different duration is needed, the prompt should explicitly request it, but the recommended default remains 15 seconds.
+- Timeout: The skill assumes a maximum overall operation time of 3 hours (10800 seconds). If VEo takes longer, the agent should report a timeout and retry according to policy.
+- Output includes a final video URL and a job_id/status, enabling downstream agents to poll for completion or failure.
